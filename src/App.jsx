@@ -1009,7 +1009,7 @@ export default function CasasLandingPage() {
               Acompanhe a competição clínica em tempo real. KPIs de adimplência, sessões, qualidade, comparecimento e evolução clínica — tudo extraído do Hamilton.
             </p>
             <a
-              href="./arena.html"
+              href="https://v-rogana.github.io/competicao_casas_allos/"
               target="_blank"
               rel="noopener noreferrer"
               style={{
