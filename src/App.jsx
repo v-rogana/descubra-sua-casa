@@ -145,6 +145,14 @@ const CATEGORIES = [
 
 // CONTENT_DATA removed — now loaded from Supabase
 
+// ── Arena KPI Config ──
+const ARENA_KPIS = [
+  { key: "adimplencia", label: "Adimplência", icon: "💰", unit: "%", max: 100, desc: "Pagamentos / Pacientes Ativos" },
+  { key: "sessoes_paciente", label: "Sessões por Paciente", icon: "📋", unit: "", max: null, desc: "Média de sessões realizadas" },
+  { key: "qualidade", label: "Qualidade da Terapia", icon: "⭐", unit: "/10", max: 10, desc: "Média das avaliações (0-10)" },
+  { key: "comparecimento", label: "Comparecimento", icon: "✅", unit: "%", max: 100, desc: "Sessões realizadas / Agendadas" },
+];
+
 // ═══════════════════════════════════════════════════════════════
 // EMBLEMS
 // ═══════════════════════════════════════════════════════════════
@@ -695,6 +703,210 @@ function UniversoCultural() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ARENA DASHBOARD
+// ═══════════════════════════════════════════════════════════════
+
+function ArenaDashboard() {
+  const [arenaData, setArenaData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [period, setPeriod] = useState("current");
+
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      setLoading(true);
+      const { data, error: err } = await supabase
+        .from("arena_data")
+        .select("data, updated_at")
+        .eq("id", 1)
+        .single();
+      if (!ignore) {
+        if (err || !data) setError("Dados da Arena indisponíveis no momento.");
+        else setArenaData({ ...data.data, updated_at: data.updated_at });
+        setLoading(false);
+      }
+    })();
+    return () => { ignore = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: "center", padding: "64px 0", animation: "fadeInUp 0.8s cubic-bezier(0.22,1,0.36,1) 0.2s both" }}>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.3)" }}>Carregando dados da Arena...</p>
+      </div>
+    );
+  }
+
+  if (error || !arenaData) {
+    return (
+      <div style={{ textAlign: "center", padding: "64px 24px", animation: "fadeInUp 0.8s cubic-bezier(0.22,1,0.36,1) 0.2s both" }}>
+        <span style={{ fontSize: 48, display: "block", marginBottom: 20 }}>⚔️</span>
+        <h3 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "clamp(24px, 5vw, 32px)", fontWeight: 300, marginBottom: 12 }}>Arena das <em style={{ fontWeight: 600 }}>Casas</em></h3>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", maxWidth: 420, margin: "0 auto", lineHeight: 1.7 }}>{error || "Dados indisponíveis."}</p>
+      </div>
+    );
+  }
+
+  const periodData = arenaData.periods[period];
+
+  const formatValue = (kpi, value) => {
+    if (value === 0 || value === null || value === undefined) return "—";
+    if (kpi.unit === "%") return value.toFixed(1) + "%";
+    if (kpi.unit === "/10") return value.toFixed(1);
+    return value.toFixed(1);
+  };
+
+  const getMax = (kpiKey) => {
+    const config = ARENA_KPIS.find((k) => k.key === kpiKey);
+    if (config.max) return config.max;
+    const vals = HOUSE_ORDER.map((h) => periodData.kpis[kpiKey]?.[h] || 0);
+    const m = Math.max(...vals);
+    return m > 0 ? m * 1.15 : 10;
+  };
+
+  const getBest = (kpiKey) => {
+    let best = null, bestVal = -Infinity;
+    HOUSE_ORDER.forEach((h) => {
+      const v = periodData.kpis[kpiKey]?.[h] || 0;
+      if (v > bestVal) { bestVal = v; best = h; }
+    });
+    return bestVal > 0 ? best : null;
+  };
+
+  const updatedDate = arenaData.updated_at
+    ? new Date(arenaData.updated_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
+    : "";
+
+  return (
+    <div style={{ animation: "fadeInUp 0.8s cubic-bezier(0.22,1,0.36,1) 0.2s both" }}>
+      {/* Period Toggle */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 12, marginBottom: "clamp(28px, 5vw, 48px)", flexWrap: "wrap" }}>
+        {Object.entries(arenaData.periods).map(([key, p]) => (
+          <button key={key} onClick={() => setPeriod(key)}
+            style={{
+              padding: "10px 28px", borderRadius: 100, cursor: "pointer", fontSize: 14, fontWeight: 500,
+              fontFamily: "'Outfit', sans-serif", letterSpacing: 0.5,
+              transition: "all 0.4s cubic-bezier(0.22,1,0.36,1)", backdropFilter: "blur(10px)",
+              border: `1px solid ${period === key ? "rgba(46,158,143,0.5)" : "rgba(255,255,255,0.12)"}`,
+              background: period === key ? "rgba(46,158,143,0.15)" : "rgba(255,255,255,0.03)",
+              color: period === key ? "#5EEAD4" : "rgba(255,255,255,0.5)",
+              boxShadow: period === key ? "0 0 20px rgba(46,158,143,0.15)" : "none",
+            }}
+          >{p.label}</button>
+        ))}
+      </div>
+
+      {/* House Summary Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))", gap: 20, marginBottom: "clamp(32px, 5vw, 48px)" }}>
+        {HOUSE_ORDER.map((key) => {
+          const house = arenaData.houses[key];
+          const c = HOUSES[key];
+          const Emblem = EMBLEM_MAP[key];
+          return (
+            <div key={key} style={{
+              background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
+              borderRadius: 20, padding: "28px 24px", textAlign: "center", position: "relative", overflow: "hidden",
+              backdropFilter: "blur(20px)", transition: "all 0.5s cubic-bezier(0.22,1,0.36,1)",
+            }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.boxShadow = `0 20px 60px ${c.glow}`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.background = "rgba(255,255,255,0.02)"; e.currentTarget.style.boxShadow = "none"; }}
+            >
+              <div style={{ position: "absolute", top: "-50%", left: "50%", transform: "translateX(-50%)", width: "80%", height: "80%", borderRadius: "50%", background: `radial-gradient(circle, ${c.glow}, transparent 70%)`, pointerEvents: "none", opacity: 0.5 }} />
+              <div style={{ position: "relative" }}>
+                <div style={{ marginBottom: 12 }}><Emblem size={48} /></div>
+                <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 26, fontWeight: 600, fontStyle: "italic", color: c.colorLight, marginBottom: 4 }}>{house.name}</h2>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", fontWeight: 500, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>{house.sensibility}</p>
+                <p style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 13, fontStyle: "italic", color: "rgba(255,255,255,0.25)", marginBottom: 16 }}>"{house.motto}"</p>
+                <div style={{ display: "flex", justifyContent: "center", gap: "clamp(16px, 3vw, 24px)" }}>
+                  <div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: c.colorLight }}>{house.therapists_count}</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>terapeutas</div>
+                  </div>
+                  <div style={{ width: 1, background: "rgba(255,255,255,0.08)" }} />
+                  <div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: c.colorLight }}>{house.active_patients}</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>pacientes</div>
+                  </div>
+                </div>
+                <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 13, color: "rgba(255,255,255,0.4)" }}>
+                  Líder: <span style={{ fontWeight: 500, color: c.colorLight }}>{house.leader}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* KPI Sections */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        {ARENA_KPIS.map((kpi, kpiIdx) => {
+          const maxVal = getMax(kpi.key);
+          const best = getBest(kpi.key);
+          return (
+            <div key={kpi.key} style={{
+              background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.05)",
+              borderRadius: 20, padding: "clamp(20px, 4vw, 32px)", position: "relative", overflow: "hidden",
+              animation: `fadeInUp 0.8s cubic-bezier(0.22,1,0.36,1) ${0.3 + kpiIdx * 0.1}s both`,
+            }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: "linear-gradient(90deg, transparent, rgba(46,158,143,0.3), transparent)" }} />
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                    <span style={{ fontSize: 20 }}>{kpi.icon}</span>
+                    <h3 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "clamp(20px, 3vw, 24px)", fontWeight: 600, letterSpacing: "-0.01em" }}>{kpi.label}</h3>
+                  </div>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", fontWeight: 300 }}>{kpi.desc}</p>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                {HOUSE_ORDER.map((houseKey, hIdx) => {
+                  const value = periodData.kpis[kpi.key]?.[houseKey] || 0;
+                  const c = HOUSES[houseKey];
+                  const isBest = houseKey === best;
+                  const pct = maxVal > 0 ? Math.min((value / maxVal) * 100, 100) : 0;
+                  return (
+                    <div key={houseKey}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: c.color, boxShadow: `0 0 8px ${c.glow}` }} />
+                          <span style={{ fontSize: 14, fontWeight: isBest ? 600 : 400, color: isBest ? c.colorLight : "rgba(255,255,255,0.6)" }}>{arenaData.houses[houseKey].name}</span>
+                          {isBest && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", borderRadius: 100, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", background: `${c.color}20`, color: c.colorLight, border: `1px solid ${c.color}40` }}>★ melhor</span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: 18, fontWeight: 600, color: isBest ? c.colorLight : "rgba(255,255,255,0.7)" }}>{formatValue(kpi, value)}</span>
+                      </div>
+                      <div style={{ width: "100%", height: 28, borderRadius: 14, background: "rgba(255,255,255,0.04)", overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <div style={{
+                          height: "100%", borderRadius: 14, background: c.gradient, position: "relative",
+                          width: `${pct}%`, transition: `width 1.2s cubic-bezier(0.22,1,0.36,1) ${hIdx * 0.15 + kpiIdx * 0.08}s`,
+                          boxShadow: `0 0 20px ${c.color}40, inset 0 1px 0 rgba(255,255,255,0.2)`,
+                        }}>
+                          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "50%", background: "linear-gradient(180deg, rgba(255,255,255,0.15), transparent)", borderRadius: "14px 14px 0 0" }} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Updated timestamp */}
+      {updatedDate && (
+        <div style={{ textAlign: "center", marginTop: 40, paddingTop: 24, borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>Última atualização: {updatedDate}</p>
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.15)", marginTop: 4 }}>Dados extraídos do Hamilton · Atualizado semanalmente</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MAIN APP — All sections unified
 // ═══════════════════════════════════════════════════════════════
 
@@ -787,17 +999,7 @@ export default function CasasLandingPage() {
         {activeSection === "universo" && <UniversoCultural />}
 
         {/* ── Arena ── */}
-        {activeSection === "arena" && (
-          <div style={{ textAlign: "center", padding: "clamp(32px, 6vw, 64px) 24px", animation: "fadeInUp 0.8s cubic-bezier(0.22,1,0.36,1) 0.2s both" }}>
-            <span style={{ fontSize: 48, display: "block", marginBottom: 20 }}>⚔️</span>
-            <h3 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: "clamp(24px, 5vw, 32px)", fontWeight: 300, marginBottom: 12 }}>Arena das <em style={{ fontWeight: 600 }}>Casas</em></h3>
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", marginBottom: 36, maxWidth: 420, margin: "0 auto 36px", lineHeight: 1.7 }}>Acompanhe a competição clínica em tempo real. KPIs de adimplência, sessões, qualidade, comparecimento e evolução clínica — tudo extraído do Hamilton.</p>
-            <a href="https://v-rogana.github.io/competicao_casas_allos/" target="_blank" rel="noopener noreferrer"
-              style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 36px", borderRadius: 100, border: "1px solid rgba(46,158,143,0.4)", background: "rgba(46,158,143,0.1)", color: "#5EEAD4", fontSize: 15, fontWeight: 500, textDecoration: "none", cursor: "pointer", fontFamily: "'Outfit', sans-serif", transition: "all 0.3s" }}>
-              Abrir Arena →
-            </a>
-          </div>
-        )}
+        {activeSection === "arena" && <ArenaDashboard />}
 
         {/* Footer */}
         <footer style={{ marginTop: "clamp(40px, 8vw, 80px)", paddingTop: 32, borderTop: "1px solid rgba(255,255,255,0.06)", textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.2)", lineHeight: 1.8, animation: "fadeIn 1s 1s both" }}>
